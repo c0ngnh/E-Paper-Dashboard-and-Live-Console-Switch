@@ -95,19 +95,27 @@ EOF
 
 echo "[3/5] Generating button_toggler.py..."
 cat << 'EOF' > $SCRIPT_DIR/button_toggler.py
-import subprocess, time
+import subprocess
+import time
 from gpiozero import Button
 from signal import pause
 
+# Define the GPIO pin
 BUTTON_PIN = 27
-button = Button(BUTTON_PIN, bounce_time=0.3)
+
+# Setup the button (added hold_time=5 for the shutdown feature)
+button = Button(BUTTON_PIN, bounce_time=0.3, hold_time=5)
 
 def is_service_active(service_name):
+    """Checks if a systemd service is currently running."""
     res = subprocess.run(['systemctl', 'is-active', service_name], capture_output=True, text=True)
     return res.stdout.strip() == 'active'
 
 def toggle_display():
+    """Safely swaps the active e-paper service."""
+    print("Button pressed! Toggling display...")
     dash_running = is_service_active('epaper_dash.service')
+    
     if dash_running:
         subprocess.run(['sudo', 'systemctl', 'stop', 'epaper_dash.service'])
         time.sleep(1) 
@@ -117,7 +125,26 @@ def toggle_display():
         time.sleep(1)
         subprocess.run(['sudo', 'systemctl', 'start', 'epaper_dash.service'])
 
+def shutdown_pi():
+    """Safely shuts down the Raspberry Pi when button is held."""
+    print("Button held for 5 seconds! Shutting down system...")
+    
+    # Safely stop the e-paper services so the screen doesn't freeze in a weird state
+    subprocess.run(['sudo', 'systemctl', 'stop', 'epaper_dash.service'])
+    subprocess.run(['sudo', 'systemctl', 'stop', 'epaper_console.service'])
+    
+    # Send the shutdown command to Linux
+    subprocess.run(['sudo', 'shutdown', 'now'])
+
+# Map the hardware actions to the functions
 button.when_pressed = toggle_display
+button.when_held = shutdown_pi
+
+print(f"Button Controller running on GPIO {BUTTON_PIN}...")
+print(" - Press to toggle screens")
+print(" - Hold for 5 seconds to shutdown")
+
+# Keep the script running forever
 pause()
 EOF
 
